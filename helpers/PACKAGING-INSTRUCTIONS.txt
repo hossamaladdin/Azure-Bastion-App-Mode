@@ -1,0 +1,66 @@
+PACKAGING INSTRUCTIONS FOR CHROME WEB STORE
+============================================
+
+STEP 1: GENERATE ICONS
+-----------------------
+The icon generator should have just opened in your browser.
+If not, open: generate-icons.html
+
+1. Click "Generate All Icons" button
+2. Four PNG files will download automatically:
+   - icon16.png
+   - icon32.png
+   - icon48.png
+   - icon128.png
+3. Save all 4 files to this folder (where manifest.json is)
+
+STEP 2: PACKAGE THE EXTENSION
+------------------------------
+Once icons are saved:
+
+Run: package-extension.ps1
+
+This will create: Azure-Bastion-App-Mode.zip
+
+STEP 3: UPLOAD TO CHROME WEB STORE (OPTIONAL)
+----------------------------------------------
+If you want to publish publicly:
+
+1. Go to: https://chrome.google.com/webstore/devconsole
+2. Sign in with your Google account
+3. Pay one-time $5 developer fee (if first time)
+4. Click "New Item"
+5. Upload Azure-Bastion-App-Mode.zip
+6. Fill in store listing details
+7. Submit for review
+
+STEP 4: SHARE PRIVATELY (RECOMMENDED)
+--------------------------------------
+If you just want to share with your team:
+
+Option A: Share the .zip file
+- Recipients extract it
+- Load unpacked in chrome://extensions/
+
+Option B: Use Chrome Enterprise
+- Deploy via Group Policy
+- Users get it automatically
+
+ALTERNATIVE: QUICK PACKAGE NOW
+-------------------------------
+If you want to skip icon generation and package immediately:
+
+1. Download any 4 Azure-themed icon PNGs (16, 32, 48, 128 pixels)
+2. Rename them to icon16.png, icon32.png, etc.
+3. Run package-extension.ps1
+
+Current Extension Files:
+------------------------
+✓ manifest.json
+✓ background.js
+✓ content.js
+✓ README.txt
+? icon16.png (need to generate)
+? icon32.png (need to generate)
+? icon48.png (need to generate)
+? icon128.png (need to generate)

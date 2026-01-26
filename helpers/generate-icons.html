@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate Extension Icons</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        canvas { border: 1px solid #ccc; margin: 10px; }
+        button { padding: 10px 20px; font-size: 16px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Azure Bastion App Mode - Icon Generator</h1>
+    <p>Click the button below to generate and download all required icons.</p>
+    <button onclick="generateAllIcons()">Generate All Icons</button>
+    <div id="canvases"></div>
+
+    <script>
+        function createIcon(size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Azure blue gradient background
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#0078D4');
+            gradient.addColorStop(1, '#0063B1');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // Draw a simplified Bastion icon (castle/shield concept)
+            ctx.fillStyle = 'white';
+
+            // Draw shield shape
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const shieldWidth = size * 0.6;
+            const shieldHeight = size * 0.7;
+
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY - shieldHeight/2);
+            ctx.lineTo(centerX + shieldWidth/2, centerY - shieldHeight/3);
+            ctx.lineTo(centerX + shieldWidth/2, centerY + shieldHeight/4);
+            ctx.lineTo(centerX, centerY + shieldHeight/2);
+            ctx.lineTo(centerX - shieldWidth/2, centerY + shieldHeight/4);
+            ctx.lineTo(centerX - shieldWidth/2, centerY - shieldHeight/3);
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw "B" in the center
+            ctx.fillStyle = '#0078D4';
+            ctx.font = `bold ${size * 0.4}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('B', centerX, centerY);
+
+            return canvas;
+        }
+
+        function downloadCanvas(canvas, filename) {
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        function generateAllIcons() {
+            const sizes = [16, 32, 48, 128];
+            const container = document.getElementById('canvases');
+            container.innerHTML = '';
+
+            sizes.forEach(size => {
+                const canvas = createIcon(size);
+                container.appendChild(canvas);
+
+                const label = document.createElement('p');
+                label.textContent = `${size}x${size}`;
+                container.appendChild(label);
+
+                // Auto-download
+                setTimeout(() => {
+                    downloadCanvas(canvas, `icon${size}.png`);
+                }, sizes.indexOf(size) * 500);
+            });
+
+            alert('Icons will download automatically. Save them to the extension folder!');
+        }
+    </script>
+</body>
+</html>
