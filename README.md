@@ -158,7 +158,7 @@ Free to use and modify for personal or commercial use.
 
 ## 🤝 Contributing
 
-This extension is maintained in the [SQL-Toolkit](https://github.com/hossamaladdin/SQL-ToolKit) repository.
+This extension is maintained in the [Azure-Bastion-App-Mode](https://github.com/hossamaladdin/Azure-Bastion-App-Mode) repository.
 
 To contribute:
 1. Fork the repo
