@@ -1,73 +1,91 @@
-// Move Bastion tabs to popup windows (preserves session!)
-// Universal pattern - matches ALL Azure Bastion instances
+// Open Bastion URLs directly in a popup window from the moment they're requested.
+// We avoid moving an already-loading tab — that race lets Bastion's initial
+// handshake (token consumption / WebSocket setup) start in a normal tab and
+// then get torn down by the move, which invalidates the session on macOS.
 const BASTION_REGEX = /^https:\/\/bst-[a-f0-9-]+\.bastion\.azure\.com\//i;
 
-let processingTabs = new Set();
-let movedTabs = new Set(); // Track tabs we've already moved
+async function getPrimaryWorkArea() {
+  try {
+    const displays = await chrome.system.display.getInfo();
+    const primary = displays.find(d => d.isPrimary) || displays[0];
+    if (primary && primary.workArea) {
+      return primary.workArea;
+    }
+  } catch (e) {
+    console.warn('system.display unavailable, falling back to defaults:', e);
+  }
+  return { left: 0, top: 0, width: 1280, height: 800 };
+}
 
-// When a tab is updated with Bastion URL
+async function openBastionPopup(url, sourceTabId) {
+  const workArea = await getPrimaryWorkArea();
+  await chrome.windows.create({
+    url,
+    type: 'popup',
+    focused: true,
+    left: workArea.left,
+    top: workArea.top,
+    width: workArea.width,
+    height: workArea.height
+  });
+
+  // If Azure Portal also opened a placeholder tab for the same navigation
+  // (e.g. via target=_blank), close it so the user isn't left with a stub.
+  if (typeof sourceTabId === 'number') {
+    try {
+      const t = await chrome.tabs.get(sourceTabId);
+      if (t && t.url && BASTION_REGEX.test(t.url)) {
+        chrome.tabs.remove(sourceTabId).catch(() => {});
+      }
+    } catch (_) { /* tab gone */ }
+  }
+}
+
+// Primary path: content script tells us a Bastion URL is being requested.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.action !== 'openBastionPopup' || !msg.url) return;
+  if (!BASTION_REGEX.test(msg.url)) return;
+
+  const sourceTabId = sender && sender.tab ? sender.tab.id : undefined;
+  openBastionPopup(msg.url, sourceTabId).catch(err =>
+    console.error('Failed to open Bastion popup:', err)
+  );
+  sendResponse({ ok: true });
+  return false;
+});
+
+// Fallback: if a Bastion URL still ends up in a normal tab somehow
+// (e.g. opened by a flow our content script couldn't intercept), redirect
+// it into a fresh popup before the page progresses too far. We act on the
+// 'loading' state so we get there before the handshake finishes.
+const handledTabs = new Set();
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // Only process when status is complete (fully loaded)
-  if (changeInfo.status !== 'complete') {
-    return;
-  }
-
-  // Only process Bastion URLs (any Azure Bastion instance)
-  if (!tab.url || !BASTION_REGEX.test(tab.url)) {
-    return;
-  }
-
-  // Skip if already processed this tab
-  if (movedTabs.has(tabId)) {
-    console.log('Tab already moved, skipping');
-    return;
-  }
-
-  // Skip if already processing
-  if (processingTabs.has(tabId)) {
-    return;
-  }
-
-  processingTabs.add(tabId);
+  if (!tab || !tab.url || !BASTION_REGEX.test(tab.url)) return;
+  if (handledTabs.has(tabId)) return;
 
   try {
-    // Get current window info
-    const window = await chrome.windows.get(tab.windowId);
-
-    // If already in a popup, don't process
-    if (window.type === 'popup') {
-      console.log('Already in popup window, skipping');
-      movedTabs.add(tabId);
-      processingTabs.delete(tabId);
+    const win = await chrome.windows.get(tab.windowId);
+    if (win.type === 'popup') {
+      handledTabs.add(tabId);
       return;
     }
+  } catch (_) { return; }
 
-    console.log('Moving Bastion tab to popup window (preserving session)');
-
-    // Create a new popup window by moving the tab directly
-    const newWindow = await chrome.windows.create({
-      tabId: tabId,
-      type: 'popup',
-      focused: true,
-      state: 'maximized'
-    });
-
-    // Mark this tab as moved
-    movedTabs.add(tabId);
-
-    console.log('Tab moved to popup successfully');
-
-  } catch (error) {
-    console.error('Error moving tab to popup:', error);
-  } finally {
-    processingTabs.delete(tabId);
-  }
+  handledTabs.add(tabId);
+  const url = tab.url;
+  // Close the stray tab and open a fresh popup at the same URL.
+  // The token in the URL hasn't been consumed yet because we're catching
+  // the very first navigation event.
+  try {
+    await chrome.tabs.remove(tabId);
+  } catch (_) { /* ignore */ }
+  openBastionPopup(url).catch(err =>
+    console.error('Fallback popup open failed:', err)
+  );
 });
 
-// Clean up moved tabs tracking when tabs are closed
 chrome.tabs.onRemoved.addListener((tabId) => {
-  movedTabs.delete(tabId);
-  processingTabs.delete(tabId);
+  handledTabs.delete(tabId);
 });
 
-console.log('Azure Bastion App Mode v2.3 (Universal): Background script loaded');
+console.log('Azure Bastion App Mode v2.5 (Universal): Background script loaded');

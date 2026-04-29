@@ -1,70 +1,74 @@
-// Intercept Bastion link clicks and open in app-style window
+// Intercept Bastion link/window.open requests in Azure Portal and ask the
+// background script to open them as a popup window directly. This avoids
+// loading the URL in a normal tab and then moving it, which races against
+// Bastion's initial handshake and invalidates the session on macOS.
 (function() {
   'use strict';
 
-  // Universal pattern - matches ALL Azure Bastion instances
   const BASTION_REGEX = /^https:\/\/bst-[a-f0-9-]+\.bastion\.azure\.com\//i;
 
-  console.log('🔵 Azure Bastion App Mode: Content script loaded on', window.location.href);
+  console.log('Azure Bastion App Mode: content script loaded on', window.location.href);
 
-  // Helper function to check if URL is a Bastion URL
   function isBastionUrl(url) {
     return url && (typeof url === 'string') && BASTION_REGEX.test(url);
   }
 
-  // Override window.open IMMEDIATELY before any other scripts run
-  const originalOpen = window.open;
-  window.open = function(url, target, features) {
-    console.log('🔵 window.open called with URL:', url);
+  // Stub Window-like object returned from intercepted window.open calls,
+  // so callers that touch the return value (focus(), .closed, etc.) don't crash.
+  function stubWindow() {
+    return {
+      closed: false,
+      close() { this.closed = true; },
+      focus() {},
+      blur() {},
+      postMessage() {}
+    };
+  }
 
-    if (isBastionUrl(url)) {
-      console.log('🟢 INTERCEPTED! Opening Bastion URL in popup:', url);
-
-      const width = screen.availWidth;
-      const height = screen.availHeight;
-
-      const popup = originalOpen.call(
+  function requestPopup(url) {
+    try {
+      chrome.runtime.sendMessage({ action: 'openBastionPopup', url });
+    } catch (e) {
+      // Extension context invalidated (e.g. just reloaded). Fall back to
+      // a plain window.open so the user isn't left without a connection.
+      console.warn('sendMessage failed, falling back to window.open:', e);
+      const w = screen.availWidth, h = screen.availHeight;
+      originalOpen.call(
         window,
         url,
         '_blank',
-        `popup=yes,width=${width},height=${height},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes`
+        `popup=yes,width=${w},height=${h},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes`
       );
-
-      console.log('🟢 Popup opened successfully');
-      return popup;
     }
+  }
 
+  const originalOpen = window.open;
+  window.open = function(url, target, features) {
+    if (isBastionUrl(url)) {
+      console.log('Azure Bastion App Mode: intercepted window.open ->', url);
+      requestPopup(url);
+      return stubWindow();
+    }
     return originalOpen.call(window, url, target, features);
   };
 
-  // Also intercept link clicks
+  // Also intercept direct link clicks where href is a Bastion URL.
   document.addEventListener('click', function(e) {
     let target = e.target;
-
-    // Walk up the DOM to find a link
     let depth = 0;
     while (target && target.tagName !== 'A' && depth < 10) {
       target = target.parentElement;
       depth++;
     }
 
-    // Check if it's a Bastion link
     if (target && target.href && isBastionUrl(target.href)) {
-      console.log('🟢 INTERCEPTED CLICK! Bastion link:', target.href);
+      console.log('Azure Bastion App Mode: intercepted click ->', target.href);
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-
-      const width = screen.availWidth;
-      const height = screen.availHeight;
-
-      window.open(
-        target.href,
-        '_blank',
-        `popup=yes,width=${width},height=${height},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes`
-      );
+      requestPopup(target.href);
     }
   }, true);
 
-  console.log('🔵 Azure Bastion App Mode: Setup complete');
+  console.log('Azure Bastion App Mode: setup complete');
 })();

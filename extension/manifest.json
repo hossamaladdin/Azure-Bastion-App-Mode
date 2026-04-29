@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Azure Bastion App Mode",
-  "version": "2.3",
+  "version": "2.5",
   "description": "Automatically opens Azure Bastion URLs in app mode with minimal borders - works with ALL Azure subscriptions",
   "icons": {
     "16": "icon16.png",
@@ -9,7 +9,7 @@
     "48": "icon48.png",
     "128": "icon128.png"
   },
-  "permissions": ["tabs"],
+  "permissions": ["tabs", "system.display"],
   "background": {
     "service_worker": "background.js"
   },
