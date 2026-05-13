@@ -1,91 +1,201 @@
-// Open Bastion URLs directly in a popup window from the moment they're requested.
-// We avoid moving an already-loading tab — that race lets Bastion's initial
-// handshake (token consumption / WebSocket setup) start in a normal tab and
-// then get torn down by the move, which invalidates the session on macOS.
-const BASTION_REGEX = /^https:\/\/bst-[a-f0-9-]+\.bastion\.azure\.com\//i;
+// Single shell window. Bastion URLs that land in any tab are pulled into the shell as iframes.
+//
+// State (chrome.storage.session):
+//   bastions:        [{ url, label, group }]
+//   shellWindowId:   number — id of the singleton shell popup window
 
-async function getPrimaryWorkArea() {
-  try {
-    const displays = await chrome.system.display.getInfo();
-    const primary = displays.find(d => d.isPrimary) || displays[0];
-    if (primary && primary.workArea) {
-      return primary.workArea;
-    }
-  } catch (e) {
-    console.warn('system.display unavailable, falling back to defaults:', e);
-  }
-  return { left: 0, top: 0, width: 1280, height: 800 };
+const STORAGE_KEY = "bastions";
+const SHELL_KEY = "shellWindowId";
+
+const BASTION_URL_PATTERNS = [
+  /^https:\/\/[^/]+\.bastion\.azure\.com\//
+];
+
+function isBastionUrl(url) {
+  return !!url && BASTION_URL_PATTERNS.some((re) => re.test(url));
 }
 
-async function openBastionPopup(url, sourceTabId) {
-  const workArea = await getPrimaryWorkArea();
-  await chrome.windows.create({
-    url,
-    type: 'popup',
-    focused: true,
-    left: workArea.left,
-    top: workArea.top,
-    width: workArea.width,
-    height: workArea.height
-  });
+async function getBastions() {
+  const { [STORAGE_KEY]: list } = await chrome.storage.session.get(STORAGE_KEY);
+  return Array.isArray(list) ? list : [];
+}
 
-  // If Azure Portal also opened a placeholder tab for the same navigation
-  // (e.g. via target=_blank), close it so the user isn't left with a stub.
-  if (typeof sourceTabId === 'number') {
+async function setBastions(list) {
+  await chrome.storage.session.set({ [STORAGE_KEY]: list });
+}
+
+async function ensureShellWindow() {
+  const { [SHELL_KEY]: id } = await chrome.storage.session.get(SHELL_KEY);
+  if (id) {
     try {
-      const t = await chrome.tabs.get(sourceTabId);
-      if (t && t.url && BASTION_REGEX.test(t.url)) {
-        chrome.tabs.remove(sourceTabId).catch(() => {});
+      const w = await chrome.windows.get(id);
+      if (w) {
+        await chrome.windows.update(id, { focused: true, state: "normal" });
+        return id;
       }
-    } catch (_) { /* tab gone */ }
+    } catch {}
   }
+  const win = await chrome.windows.create({
+    url: chrome.runtime.getURL("shell.html"),
+    type: "popup",
+    focused: true,
+    width: 1400,
+    height: 900
+  });
+  await chrome.storage.session.set({ [SHELL_KEY]: win.id });
+  return win.id;
 }
 
-// Primary path: content script tells us a Bastion URL is being requested.
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || msg.action !== 'openBastionPopup' || !msg.url) return;
-  if (!BASTION_REGEX.test(msg.url)) return;
+async function addBastion({ url, label, group }) {
+  const list = await getBastions();
+  if (!list.find((b) => b.url === url)) {
+    list.push({
+      url,
+      label: label || new URL(url).hostname,
+      group: group || "default"
+    });
+    await setBastions(list);
+  }
+  await ensureShellWindow();
+  broadcast({ type: "bastions-changed" });
+}
 
-  const sourceTabId = sender && sender.tab ? sender.tab.id : undefined;
-  openBastionPopup(msg.url, sourceTabId).catch(err =>
-    console.error('Failed to open Bastion popup:', err)
-  );
-  sendResponse({ ok: true });
-  return false;
-});
+async function removeBastion(url) {
+  const list = (await getBastions()).filter((b) => b.url !== url);
+  await setBastions(list);
+  broadcast({ type: "bastions-changed" });
+}
 
-// Fallback: if a Bastion URL still ends up in a normal tab somehow
-// (e.g. opened by a flow our content script couldn't intercept), redirect
-// it into a fresh popup before the page progresses too far. We act on the
-// 'loading' state so we get there before the handshake finishes.
-const handledTabs = new Set();
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (!tab || !tab.url || !BASTION_REGEX.test(tab.url)) return;
-  if (handledTabs.has(tabId)) return;
-
-  try {
-    const win = await chrome.windows.get(tab.windowId);
-    if (win.type === 'popup') {
-      handledTabs.add(tabId);
-      return;
+function broadcast(msg) {
+  chrome.runtime.sendMessage(msg).catch(() => {});
+  chrome.tabs.query({}, (tabs) => {
+    for (const t of tabs) {
+      chrome.tabs.sendMessage(t.id, msg).catch(() => {});
     }
-  } catch (_) { return; }
+  });
+}
+
+// Catch bastion URLs the user opens in any tab and route them into the shell as fast as
+// possible. We don't try to extract a meaningful title from the source tab — Azure sets
+// the real <title> only after the page settles post-login. Instead we inject a
+// MutationObserver into the iframe that lives in the shell window (same page, same lifecycle)
+// and let it stream title updates back to us as they happen.
+const handledTabs = new Set();
+
+chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+  if (handledTabs.has(tabId)) return;
+  if (!tab.url || !isBastionUrl(tab.url)) return;
+  if (tab.url.startsWith(chrome.runtime.getURL(""))) return;
 
   handledTabs.add(tabId);
-  const url = tab.url;
-  // Close the stray tab and open a fresh popup at the same URL.
-  // The token in the URL hasn't been consumed yet because we're catching
-  // the very first navigation event.
+
+  await addBastion({
+    url: tab.url,
+    label: new URL(tab.url).hostname, // placeholder; iframe observer will update
+    group: "default"
+  });
+
   try {
-    await chrome.tabs.remove(tabId);
-  } catch (_) { /* ignore */ }
-  openBastionPopup(url).catch(err =>
-    console.error('Fallback popup open failed:', err)
-  );
+    const win = await chrome.windows.get(tab.windowId, { populate: true });
+    if (win && win.tabs && win.tabs.length === 1) {
+      await chrome.windows.remove(tab.windowId);
+    } else {
+      await chrome.tabs.remove(tabId);
+    }
+  } catch {}
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  handledTabs.delete(tabId);
+chrome.tabs.onRemoved.addListener((tabId) => handledTabs.delete(tabId));
+
+// When a bastion iframe inside the shell finishes loading, inject a title observer
+// that pushes every title update back via runtime messaging.
+chrome.webNavigation.onCompleted.addListener(
+  (details) => {
+    if (details.frameId === 0) return; // top frame, not our iframe
+    if (!isBastionUrl(details.url)) return;
+    chrome.scripting
+      .executeScript({
+        target: { tabId: details.tabId, frameIds: [details.frameId] },
+        func: () => {
+          if (window.__bsTitleWatcher) return;
+          window.__bsTitleWatcher = true;
+          let last = "";
+          const push = () => {
+            if (document.title === last) return;
+            last = document.title;
+            chrome.runtime
+              .sendMessage({
+                type: "iframeTitle",
+                url: location.href,
+                title: last
+              })
+              .catch(() => {});
+          };
+          push();
+          setInterval(push, 750); // poll — robust against title-element replacement
+        }
+      })
+      .catch(() => {});
+  },
+  { url: [{ hostSuffix: ".bastion.azure.com" }] }
+);
+
+async function updateBastionLabel(frameUrl, title) {
+  if (!title) return;
+  const looksLikeUrl =
+    title === frameUrl || title.startsWith("http") || title.includes("bastion.azure.com");
+  if (looksLikeUrl) return;
+
+  // The iframe may have redirected since we registered the bastion, so the
+  // frame's location.href no longer equals the stored URL. Fall back to host
+  // matching (bst-{guid}.bastion.azure.com is the stable identifier).
+  const list = await getBastions();
+  let entry = list.find((b) => b.url === frameUrl);
+  if (!entry) {
+    try {
+      const target = new URL(frameUrl);
+      entry = list.find((b) => {
+        try { return new URL(b.url).host === target.host; } catch { return false; }
+      });
+    } catch {}
+  }
+  if (!entry || entry.label === title) return;
+  entry.label = title;
+  await setBastions(list);
+  broadcast({ type: "label-changed", url: entry.url, label: title });
+}
+
+// Open the shell when the user clicks the action icon.
+chrome.action.onClicked.addListener(() => {
+  ensureShellWindow();
 });
 
-console.log('Azure Bastion App Mode v2.5 (Universal): Background script loaded');
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  const { [SHELL_KEY]: id } = await chrome.storage.session.get(SHELL_KEY);
+  if (id === windowId) {
+    // Closing the shell window ends the session — drop the bastion list so
+    // the next launch starts fresh and doesn't resurrect old iframes.
+    await chrome.storage.session.remove([SHELL_KEY, STORAGE_KEY]);
+  }
+});
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  (async () => {
+    if (msg.type === "iframeTitle") {
+      await updateBastionLabel(msg.url, msg.title);
+      sendResponse({ ok: true });
+    } else if (msg.type === "list") {
+      sendResponse(await getBastions());
+    } else if (msg.type === "addBastion") {
+      await addBastion(msg);
+      sendResponse({ ok: true });
+    } else if (msg.type === "removeBastion") {
+      await removeBastion(msg.url);
+      sendResponse({ ok: true });
+    } else if (msg.type === "openShell") {
+      const id = await ensureShellWindow();
+      sendResponse({ ok: true, windowId: id });
+    }
+  })();
+  return true;
+});
