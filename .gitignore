@@ -1,0 +1,9 @@
+# Chrome extension signing keys — NEVER commit
+*.pem
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Chrome-generated DNR cache
+extension/_metadata/
