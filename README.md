@@ -1,12 +1,10 @@
-# Azure Bastion App Mode - Chrome Extension
+# Azure Bastion App Mode — Chrome Extension
 
-**Universal Chrome extension that automatically opens ALL Azure Bastion connections in app mode with minimal borders.**
+**Single-window Azure Bastion workspace.** Every shareable-link Bastion connection lives as a tab-less view inside one app-mode window, with an auto-hiding sidebar to switch between them.
 
-## Version: 2.3 (Universal)
+## Version: 3.0 (Single-Window Shell)
 
-Works with **ANY Azure subscription** and **ANY Bastion instance**!
-
-Pattern: `https://bst-{any-guid}.bastion.azure.com/`
+No more juggling Chrome windows. No more taskbar pollution. Click a bastion link → it lands as an iframe inside the shell, side-by-side with everything else you have open. Keyboard shortcuts go to the bastion content, not the wrapper.
 
 ---
 
@@ -14,158 +12,150 @@ Pattern: `https://bst-{any-guid}.bastion.azure.com/`
 
 ```
 Azure-Bastion-App-Mode/
-├── extension/              ← Install this folder in Chrome
-│   ├── manifest.json      (v2.3 - Universal support)
-│   ├── background.js      (Tab mover with regex pattern)
-│   ├── content.js         (window.open interceptor)
-│   ├── icon*.png          (Extension icons)
-│   └── README.txt         (User documentation)
+├── extension/                  ← Load this folder in Chrome
+│   ├── manifest.json           (MV3)
+│   ├── background.js           (service worker — routes bastions into the shell)
+│   ├── shell.html              (the single window's UI)
+│   ├── shell.css               (sidebar + iframe stack styling)
+│   ├── shell.js                (sidebar logic, iframe management)
+│   ├── rules.json              (DNR rules — strip X-Frame-Options / CSP / COOP / COEP)
+│   └── icons/                  (Azure Bastion icon, multiple sizes)
 │
-└── helpers/               ← Development tools
-    ├── create-icons.ps1   (Generate extension icons)
-    ├── generate-icons.html (Icon generator UI)
-    ├── package-extension.ps1 (Create .zip for distribution)
-    └── PACKAGING-INSTRUCTIONS.txt
+└── helpers/                    ← Development tools
+    └── …
 ```
 
 ---
 
 ## 🚀 Quick Install
 
-1. Open Chrome: `chrome://extensions/`
+1. Open Chrome (or any Chromium browser — Edge, Comet, etc.): `chrome://extensions/`
 2. Enable **Developer mode** (top-right toggle)
 3. Click **Load unpacked**
 4. Select the `extension/` folder
-5. Done!
+5. Click a Bastion shareable-URL — the shell window opens with it inside
 
 ---
 
 ## ✨ Features
 
-- ✅ Works with **ALL Azure Bastion instances** (any subscription, any account)
-- ✅ Automatic popup window with minimal borders
-- ✅ Preserves authentication and session
-- ✅ No infinite loops
-- ✅ Zero configuration needed
+- ✅ **One window total.** Every bastion is an iframe inside a single app-mode popup. No new Chrome window per connection, no taskbar entry per bastion.
+- ✅ **Auto-hiding sidebar.** Hover the left edge to slide it in; leave for 400 ms and it slides back out. Pinnable.
+- ✅ **Auto-switch on open.** Clicking a `.desktop` launcher / bookmark routes the new bastion in and brings it to the front.
+- ✅ **Title self-heals.** A `MutationObserver` watches each iframe's `<title>` and updates the sidebar label as soon as Azure sets the real resource name (post-redirect / post-login).
+- ✅ **Window title tracks the active bastion** — the OS title bar and your taskbar entry show whatever you're currently looking at.
+- ✅ **Official Azure Bastion icon.**
 
 ---
 
 ## 🔧 How It Works
 
-The extension uses a **universal regex pattern** to match any Azure Bastion URL:
+### Architecture
 
-```javascript
-/^https:\/\/bst-[a-f0-9-]+\.bastion\.azure\.com\//i
+1. **Background service worker** (`background.js`) listens for any tab loading a `*.bastion.azure.com` URL.
+2. Adds it to a session-scoped bastion list, then closes the source tab — or the whole window if it was launched just for that URL.
+3. Opens (or focuses) the single shell window: a popup-type Chrome window with no tab strip and no address bar, loading `shell.html`.
+4. The shell creates an `<iframe>` per bastion, stacked in the same container; only the active one is visible (z-index swap, others stay mounted so WebSocket sessions survive switching).
+5. `declarativeNetRequest` strips `X-Frame-Options`, `Content-Security-Policy`, `Cross-Origin-Opener-Policy`, and `Cross-Origin-Embedder-Policy` from `bastion.azure.com` responses so the iframe is allowed to load.
+6. `webNavigation.onCompleted` fires for each iframe load → a `chrome.scripting.executeScript` injection installs a `setInterval` polling `document.title` inside the iframe and reports every change back to the background, which updates the sidebar label live.
+
+### URL pattern
+
+```
+https://*.bastion.azure.com/*
 ```
 
-This matches URLs like:
-- `https://bst-e021affb-8ee4-460a-be3f-f153e775d3cd.bastion.azure.com/`
-- `https://bst-12345678-abcd-efgh-ijkl-mnopqrstuvwx.bastion.azure.com/`
-- Any other Bastion instance URL
+Specifically the shareable-link form: `https://bst-{guid}.bastion.azure.com/api/shareable-url/{guid}`.
 
-When detected:
-1. Background script waits for page to fully load
-2. Moves the tab to a new popup window (preserves session)
-3. Content script also intercepts `window.open()` calls as fallback
+### Keyboard handling
+
+When the **shell** has focus, the following are intercepted and routed to the active iframe:
+
+- **F5 / Ctrl+R** — reload the active bastion only (via `iframe.src = iframe.src`)
+- **Ctrl+W** — close the active bastion only (not the whole window)
+- **Ctrl+Tab / Ctrl+Shift+Tab** — cycle bastions
+
+Once the bastion iframe takes focus, the browser owns the shortcuts again. Use the sidebar's `↻` / `×` controls in that case.
 
 ---
 
 ## 🧪 Testing
 
-1. Reload the extension in Chrome
-2. Go to Azure Portal
-3. Connect to any VM via Bastion
-4. Click "Open in new browser tab"
-5. Watch it open in app mode automatically! 🎉
-
-Test with different subscriptions to verify universal support.
+1. Reload the extension at `chrome://extensions/`.
+2. Open any Bastion shareable-link (a `.desktop` launcher with `URL=https://bst-…bastion.azure.com/…`, a bookmark, a click from Outlook — anything).
+3. The shell window opens; the bastion loads inside.
+4. Click a second bastion link — it auto-switches to the new one. Hover the left edge for the sidebar.
 
 ---
 
 ## 📦 Distribution
 
-### Option 1: Share Extension Folder
-- Share the `extension/` folder with your team
-- They load it as unpacked extension
+### Load unpacked (recommended for personal use)
+- Share the `extension/` folder; users load it via `chrome://extensions/` → **Load unpacked**.
 
-### Option 2: Package as ZIP
-- Use `helpers/package-extension.ps1` to create .zip
-- Share the .zip file
+### Packaged ZIP
+- Zip the `extension/` folder. Recipients unzip and load unpacked. (Chrome won't install a `.zip` directly; `.crx` sideload is blocked since Chrome 67.)
 
-### Option 3: Chrome Web Store
-- Package as .zip
-- Upload to [Chrome Web Store Developer Console](https://chrome.google.com/webstore/devconsole)
-- Publish (requires $5 one-time fee)
+### Chrome Web Store
+- Zip the `extension/` folder and upload to the [Developer Console](https://chrome.google.com/webstore/devconsole) (one-time $5 fee).
 
 ---
 
 ## 🛠️ Development
 
-To modify the extension:
+Modify files in `extension/`, then click the reload button in `chrome://extensions/`.
 
-1. Edit files in `extension/` folder
-2. Go to `chrome://extensions/`
-3. Click reload button on the extension
-4. Test your changes
+### Regenerate icons
 
-### Regenerate Icons
-```powershell
-cd helpers
-.\create-icons.ps1
-```
+The icon source is `extension/icons/bastion.svg` (Microsoft's official Azure Bastion glyph). To regenerate PNGs:
 
-### Package Extension
-```powershell
-cd helpers
-.\package-extension.ps1
+```bash
+cd extension/icons
+for sz in 16 32 48 128; do
+  google-chrome --headless --disable-gpu --hide-scrollbars \
+    --default-background-color=00000000 \
+    --screenshot=icon-$sz.png --window-size=$sz,$sz \
+    "file://$PWD/bastion.svg"
+done
 ```
 
 ---
 
 ## 📋 Version History
 
-- **v2.3** - Universal support for ALL Azure Bastion instances (regex pattern)
-- **v2.2** - Stable version with session preservation
-- **v2.1** - Fixed: Moves tab instead of recreating
-- **v2.0** - Hybrid approach: background + content script
-- **v1.x** - Initial versions (deprecated)
-
----
-
-## 📄 License
-
-Free to use and modify for personal or commercial use.
+- **v3.0** — Single-window shell. Stacked iframes, auto-hiding sidebar, live title sync, Azure Bastion icon, MV3.
+- **v2.3** — Universal regex for any Bastion instance (last multi-window release).
+- **v2.x** — Hybrid tab-mover + content-script.
+- **v1.x** — Initial versions (deprecated).
 
 ---
 
 ## 🐛 Troubleshooting
 
-**Extension not working?**
-- Check `chrome://extensions/` - ensure enabled
-- Click refresh button to reload extension
-- Refresh Azure Portal page
+**Bastion iframe shows blank / refuses to load**
+- Open the shell window's DevTools (right-click → Inspect inside the shell), check the Console for iframe load errors.
+- If Azure has added new framing protections, the DNR ruleset in `rules.json` may need updating.
 
-**Session errors?**
-- Should be fixed in v2.3
-- If still broken, file an issue
+**Sidebar stays stuck open**
+- Move the cursor off the panel; the slide-out has a 400 ms delay before it starts.
+- If pinned (`📍` icon), click the pin button to unpin.
 
-**Wrong Bastion URL pattern?**
-- Edit `extension/background.js` line 3 (BASTION_REGEX)
-- Edit `extension/content.js` line 6 (BASTION_REGEX)
-- Reload extension
+**Wrong / generic label in the sidebar**
+- The label is the iframe's `document.title`. Initial title is often `Azure Bastion`; once the connection establishes, Azure updates it to the resource name. If your bastion page never sets a real title, the hostname (`bst-…`) is used as a fallback.
+
+**Source tab doesn't auto-close**
+- The window-close logic only closes the source window if it has exactly one tab. If Chrome was already running and the URL opened in a tab alongside others, only that tab is closed (your other tabs stay).
 
 ---
 
 ## 🤝 Contributing
 
-This extension is maintained in the [Azure-Bastion-App-Mode](https://github.com/hossamaladdin/Azure-Bastion-App-Mode) repository.
-
 To contribute:
 1. Fork the repo
-2. Make changes in `Azure-Bastion-App-Mode/extension/`
-3. Test thoroughly
+2. Make changes under `extension/`
+3. Reload the unpacked extension in Chrome and test
 4. Submit a pull request
 
 ---
 
-**Made with ❤️ for Azure admins who want cleaner Bastion connections**
+**Made with ❤️ for Azure admins who want cleaner Bastion connections.**

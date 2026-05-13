@@ -1,0 +1,179 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0f1115;
+  color: #e8eaed;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+}
+
+#bastion-shell {
+  position: fixed;
+  inset: 0;
+}
+
+.bs-hotzone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 10;
+}
+
+.bs-panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 240px;
+  transform: translateX(-100%);
+  transition: transform 140ms ease 400ms;
+  background: rgba(24, 26, 31, 0.98);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  z-index: 20;
+}
+
+.bs-hotzone:hover + .bs-panel,
+.bs-panel:hover,
+#bastion-shell.bs-pinned .bs-panel {
+  transform: translateX(0);
+  transition-delay: 0s;
+}
+
+.bs-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bs-logo {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.bs-title {
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  flex: 1;
+}
+
+button {
+  all: unset;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #cdd2d8;
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bs-groups {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.bs-group {
+  margin-bottom: 6px;
+}
+
+.bs-group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #8b94a3;
+  padding: 4px 12px;
+}
+
+.bs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+
+.bs-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-left-color: #4c9aff;
+}
+
+.bs-row.bs-active {
+  background: rgba(76, 154, 255, 0.12);
+  border-left-color: #4c9aff;
+}
+
+.bs-dot {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.bs-row.bs-active .bs-dot {
+  opacity: 1;
+  filter: drop-shadow(0 0 3px rgba(80, 230, 255, 0.6));
+}
+
+.bs-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bs-x {
+  visibility: hidden;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.bs-row:hover .bs-x {
+  visibility: visible;
+}
+
+.bs-empty {
+  padding: 16px 12px;
+  color: #8b94a3;
+  font-style: italic;
+}
+
+.bs-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 6px 10px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.bs-views {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.bs-view {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  visibility: hidden;
+}
+
+.bs-view.bs-active {
+  visibility: visible;
+  z-index: 2;
+}

@@ -1,32 +1,50 @@
 {
   "manifest_version": 3,
-  "name": "Azure Bastion App Mode",
-  "version": "2.5",
-  "description": "Automatically opens Azure Bastion URLs in app mode with minimal borders - works with ALL Azure subscriptions",
-  "icons": {
-    "16": "icon16.png",
-    "32": "icon32.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
-  },
-  "permissions": ["tabs", "system.display"],
+  "name": "Bastion App Mode — Sidebar",
+  "version": "0.2.0",
+  "description": "Single-window Azure Bastion shell: stacked iframes, side-bar switcher, no taskbar pollution.",
+  "permissions": [
+    "windows",
+    "tabs",
+    "storage",
+    "scripting",
+    "webNavigation",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "host_permissions": [
+    "https://*.bastion.azure.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
-  "host_permissions": [
-    "https://*.azure.com/*",
-    "https://portal.azure.com/*",
-    "https://*.bastion.azure.com/*"
-  ],
-  "content_scripts": [
+  "action": {
+    "default_title": "Open bastion shell",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "web_accessible_resources": [
     {
-      "matches": [
-        "https://*.azure.com/*",
-        "https://portal.azure.com/*"
-      ],
-      "js": ["content.js"],
-      "run_at": "document_start",
-      "all_frames": true
+      "resources": ["shell.html", "shell.js", "shell.css", "icons/*"],
+      "matches": ["<all_urls>"]
     }
   ]
 }
