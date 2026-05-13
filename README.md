@@ -12,7 +12,7 @@ No more juggling Chrome windows. No more taskbar pollution. Click a bastion link
 
 ```
 Azure-Bastion-App-Mode/
-├── extension/                  ← Load this folder in Chrome
+├── extension/                  ← Source — load this folder in Chrome (Load unpacked)
 │   ├── manifest.json           (MV3)
 │   ├── background.js           (service worker — routes bastions into the shell)
 │   ├── shell.html              (the single window's UI)
@@ -20,6 +20,10 @@ Azure-Bastion-App-Mode/
 │   ├── shell.js                (sidebar logic, iframe management)
 │   ├── rules.json              (DNR rules — strip X-Frame-Options / CSP / COOP / COEP)
 │   └── icons/                  (Azure Bastion icon, multiple sizes)
+│
+├── dist/                       ← Prebuilt artifacts
+│   ├── bastion-sidebar-ext-v3.0.crx   (signed CRX)
+│   └── bastion-sidebar-ext-v3.0.zip   (zipped source for Load unpacked)
 │
 └── helpers/                    ← Development tools
     └── …
@@ -29,11 +33,20 @@ Azure-Bastion-App-Mode/
 
 ## 🚀 Quick Install
 
-1. Open Chrome (or any Chromium browser — Edge, Comet, etc.): `chrome://extensions/`
-2. Enable **Developer mode** (top-right toggle)
-3. Click **Load unpacked**
-4. Select the `extension/` folder
-5. Click a Bastion shareable-URL — the shell window opens with it inside
+### Option A — Load from source (recommended)
+
+1. Clone or download this repo.
+2. Open Chrome (or any Chromium browser — Edge, Comet, etc.): `chrome://extensions/`
+3. Enable **Developer mode** (top-right toggle).
+4. Click **Load unpacked** and select the `extension/` folder.
+5. Click a Bastion shareable-URL — the shell window opens with it inside.
+
+### Option B — Prebuilt download
+
+Grab one of the artifacts from [`dist/`](dist/):
+
+- [`bastion-sidebar-ext-v3.0.zip`](dist/bastion-sidebar-ext-v3.0.zip) — unzip, then **Load unpacked**. Works in stock Chrome.
+- [`bastion-sidebar-ext-v3.0.crx`](dist/bastion-sidebar-ext-v3.0.crx) — drag onto `chrome://extensions/`. Works on Brave / Chromium-dev / enterprise-managed Chrome; **mainline stock Chrome blocks unsigned CRX sideload since Chrome 67**, so the zip route is the safe bet.
 
 ---
 
