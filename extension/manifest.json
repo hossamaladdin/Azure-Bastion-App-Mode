@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Bastion App Mode — Sidebar",
-  "version": "0.2.0",
+  "name": "Bastion App Mode — Sidebar (handshake)",
+  "version": "3.1.0",
   "description": "Single-window Azure Bastion shell: stacked iframes, side-bar switcher, no taskbar pollution.",
   "permissions": [
     "windows",
@@ -12,11 +12,42 @@
     "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
+    "https://*.azure.com/*",
     "https://*.bastion.azure.com/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://*.azure.com/*"],
+      "exclude_matches": ["https://*.bastion.azure.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://*.azure.com/*"],
+      "exclude_matches": ["https://*.bastion.azure.com/*"],
+      "js": ["content-bridge.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://*.bastion.azure.com/*"],
+      "js": ["bastion-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": ["https://*.bastion.azure.com/*"],
+      "js": ["bastion-bridge.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
   "action": {
     "default_title": "Open bastion shell",
     "default_icon": {

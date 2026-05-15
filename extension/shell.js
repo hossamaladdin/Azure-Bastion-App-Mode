@@ -90,12 +90,15 @@ async function sync() {
   // Add iframes for new bastions
   for (const b of list) {
     if (!iframes.has(b.url)) {
+      console.log("[bastion-ext shell] mounting iframe for", b.url);
       const f = document.createElement("iframe");
       f.src = b.url;
       f.className = "bs-view";
       f.dataset.url = b.url;
       // sandbox left off so bastion can do everything it normally would
       f.allow = "clipboard-read; clipboard-write; fullscreen";
+      f.addEventListener("load", () => console.log("[bastion-ext shell] iframe loaded:", b.url));
+      f.addEventListener("error", (e) => console.warn("[bastion-ext shell] iframe error:", b.url, e));
       viewsEl.appendChild(f);
       iframes.set(b.url, f);
       setActive(b.url); // auto-switch to the newly added bastion
